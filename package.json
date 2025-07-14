@@ -1,0 +1,22 @@
+{
+  "name": "jwt-auth-module",
+  "version": "1.0.0",
+  "description": "Данный ресурс представляет из себя web-приложение, которое объеденяет абитуриентов, ВУЗ'ы и работодателей, нацеленное на развитие у обучающихся осознанного выбора образовательной программы учебного заведения, для дальнейшего связывания полученных профильных навыков с трудовой деятельностью.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wqqzxts/inrtu-jwt-node-auth.git"
+  },
+  "author": "Timur",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/wqqzxts/inrtu-jwt-node-auth/issues"
+  },
+  "homepage": "https://github.com/wqqzxts/inrtu-jwt-node-auth#readme",
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2"
+  }
+}
