@@ -4,4 +4,16 @@
 ## Введение
 Для успешной реализации auth-модуля необходимо понять какие объекты будут использовать его. Запросы к серверу будет производить программа, исполняющаяся на устройстве пользователя
 ## Моделирование таблицы БД
-Пользователей можно разделить на следующие группы: абитуриент, представитель ВУЗ'а и работодатель. Необходимо выделить общие свойства пользователей - id, last_name, first_name, patronymic, is_male, role, email, password, is_active, created_at, last_login
+Пользователей можно разделить на следующие группы: абитуриент, представитель ВУЗ'а и работодатель. Необходимо выделить общие свойства пользователей - id, last_name, first_name, patronymic, is_male, email, password, is_active, created_at, last_login.
+| Атрибут       | Тип данных                     | Ограничения    | Описание                     |
+|---------------|--------------------------------|----------------|------------------------------|
+| id            | SERIAL                         | PRIMARY KEY    | Уникальный идентификатор     |
+| last_name     | VARCHAR(50)                    | NOT NULL       | Фамилия пользователя         |
+| first_name    | VARCHAR(20)                    | NOT NULL       | Имя пользователя             |
+| patronymic    | VARCHAR(30)                    | NULL           | Отчество                     |
+| is_male       | BOOLEAN                        | NOT NULL       | Пол                          |
+| email         | VARCHAR(128)                   | NOT NULL UNIQUE| Электронная почта            |
+| password      | VARCHAR(128)                   | NOT NULL       | Хэш пароля                   |
+| is_active     | BOOLEAN                        | DEFAULT FALSE  | Активность аккаунта          |
+| created_at    | TIMESTAMPTZ                    | DEFAULT NOW()  | Дата создания                |
+| last_login    | TIMESTAMPTZ                    | NULL           | Дата последнего входа        |
