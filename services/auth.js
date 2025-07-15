@@ -1,5 +1,5 @@
 const db = require('../debug/db');
-const jwtService = require('../services/jwt');
+const jwt = require('../services/jwt');
 const config = require('../config');
 const isHash = require('../util/is_hash');
 
@@ -7,7 +7,7 @@ class AuthService {
     async register(userData) {
         const { last_name, first_name, patronymic, is_male, email, password } = userData; 
 
-        if (config.client.passwdHashed && !this.isHash(password)) {
+        if (config.client.passwdHashed && !isHash(password)) {
             throw new Error('user password must be hashed on the client-side');
         }
         
@@ -29,7 +29,33 @@ class AuthService {
     }
 
     async login(email, password) {
+        const user = await db.query(
+            `
+            SELECT id, password, is_active FROM users WHERE email = $1,                        
+            `,
+            [email]
+        );
 
+        if (user.rows.length === 0) throw new Error('user not found');
+        
+        const userData = user.rows[0];
+
+        if (!isHash(userData.password)) throw new Error('user password must be hashed on the client-side');
+        
+        if (userData.password !== password) throw new Error('invalid password');
+
+        // if (!userData.is_active) // to do
+
+        await db.query(
+            `UPDATE users SET last_login NOW() WHERE id = $1`,        
+            [userData.id]
+        );
+
+        return {
+            userId: userData.id,
+            access: jwt.genAccess(userData.id),
+            refresh: jwt.genRefresh(userData.id),
+        }
     }
 
     async logout() {
