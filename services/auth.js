@@ -69,7 +69,7 @@ class AuthService {
   async refresh(userId) {
     const user = await db.query(
       `SELECT id, is_active FROM users WHERE id = $1`,
-      userId
+      [userId]
     );
 
     if (user.rows.length === 0) throw new Error("user not found");
