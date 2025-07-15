@@ -25,7 +25,10 @@ class AuthService {
 
       return result.rows[0];
     } catch (error) {
-      throw new Error("user creation in the db is failed due to:", error);
+      console.error("Database error:", error); // Add this line
+      throw new Error(
+        `user creation in the db is failed due to: ${error.message}`
+      );
     }
   }
 
