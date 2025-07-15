@@ -59,11 +59,18 @@ class AuthService {
     }
 
     async logout() {
-
+        // does the db knows anything about logout?
     }
 
-    async refresh() {
+    async refresh(userId) {
+        const user = await db.query(
+            `SELECT id, is_active FROM users WHERE id = $1`,
+            userId
+        );
 
+        if (user.rows.length === 0) throw new Error('user not found');
+
+        return jwt.genAccess(userId);
     }
 }
 
