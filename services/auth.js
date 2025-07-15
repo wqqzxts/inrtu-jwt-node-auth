@@ -1,77 +1,80 @@
-const db = require('../debug/db');
-const jwt = require('../services/jwt');
-const config = require('../config');
-const isHash = require('../util/is_hash');
+const db = require("../debug/db");
+const jwt = require("../services/jwt");
+const config = require("../config");
+const isHash = require("../util/is_hash");
 
 class AuthService {
-    async register(userData) {
-        const { last_name, first_name, patronymic, is_male, email, password } = userData; 
+  async register(userData) {
+    const { last_name, first_name, patronymic, is_male, email, password } =
+      userData;
 
-        if (config.client.passwdHashed && !isHash(password)) {
-            throw new Error('user password must be hashed on the client-side');
-        }
-        
-        try {
-            const result = await db.query(
-                `
+    if (config.client.passwdHashed && !isHash(password)) {
+      throw new Error("user password must be hashed on the client-side");
+    }
+
+    try {
+      const result = await db.query(
+        `
                 INSERT INTO users 
                 (last_name, first_name, patronymic, is_male, email, password) 
                 VALUES ($1, $2, $3, $4, $5, $6) 
                 RETURNING id, email, is_active, created_at
                 `,
-                [last_name, first_name, patronymic, is_male, email, password]
-            );
+        [last_name, first_name, patronymic, is_male, email, password]
+      );
 
-            return result.rows[0];
-        } catch (error) {
-            throw new Error('user creation in the db is failed due to:', error);
-        }
+      return result.rows[0];
+    } catch (error) {
+      throw new Error("user creation in the db is failed due to:", error);
     }
+  }
 
-    async login(email, password) {
-        const user = await db.query(
-            `
-            SELECT id, password, is_active FROM users WHERE email = $1,                        
+  async login(email, password) {
+    const user = await db.query(
+      `
+            SELECT id, password, is_active FROM users WHERE email = $1
             `,
-            [email]
-        );
+      [email]
+    );
 
-        if (user.rows.length === 0) throw new Error('user not found');
-        
-        const userData = user.rows[0];
+    if (user.rows.length === 0) throw new Error("user not found");
 
-        if (!isHash(userData.password)) throw new Error('user password must be hashed on the client-side');
-        
-        if (userData.password !== password) throw new Error('invalid password');
+    const userData = user.rows[0];
 
-        // if (!userData.is_active) // to do
+    if (!isHash(userData.password))
+      throw new Error("user password must be hashed on the client-side");
 
-        await db.query(
-            `UPDATE users SET last_login NOW() WHERE id = $1`,        
-            [userData.id]
-        );
+    if (userData.password !== password) throw new Error("invalid password");
 
-        return {
-            userId: userData.id,
-            access: jwt.genAccess(userData.id),
-            refresh: jwt.genRefresh(userData.id),
-        }
-    }
+    // if (!userData.is_active) // to do
 
-    async logout() {
-        // does the db knows anything about logout?
-    }
+    await db.query(`UPDATE users SET last_login = NOW() WHERE id = $1`, [
+      userData.id,
+    ]);
 
-    async refresh(userId) {
-        const user = await db.query(
-            `SELECT id, is_active FROM users WHERE id = $1`,
-            userId
-        );
+    return {
+      userId: userData.id,
+      access: jwt.genAccess(userData.id),
+      refresh: jwt.genRefresh(userData.id),
+    };
+  }
 
-        if (user.rows.length === 0) throw new Error('user not found');
+  // async logout() {
+  //     // does the db knows anything about logout?
+  // }
 
-        return jwt.genAccess(userId);
-    }
+  async refresh(userId) {
+    const user = await db.query(
+      `SELECT id, is_active FROM users WHERE id = $1`,
+      userId
+    );
+
+    if (user.rows.length === 0) throw new Error("user not found");
+
+    // if (!user.rows[0].is_active) // to do
+
+    return jwt.genAccess(userId);
+  }
 }
 
 module.exports = new AuthService();
