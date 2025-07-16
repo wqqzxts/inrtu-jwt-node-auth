@@ -17,11 +17,11 @@ class AuthService {
     try {
       const result = await db.query(
         `
-                INSERT INTO users 
-                (last_name, first_name, patronymic, is_male, email, password) 
-                VALUES ($1, $2, $3, $4, $5, $6) 
-                RETURNING id, email, is_active, created_at
-                `,
+        INSERT INTO users
+        (last_name, first_name, patronymic, is_male, email, password) 
+        VALUES ($1, $2, $3, $4, $5, $6) 
+        RETURNING id, email, is_active, created_at
+        `,
         [last_name, first_name, patronymic, is_male, email, password]
       );
 
@@ -89,7 +89,8 @@ class AuthService {
         VALUES ($1, $2, $3)
         ON CONFLICT (email)
         DO UPDATE SET otp_code = $2, created_at = $3, attempts = 0
-        `[email, otp, now]
+        `,
+        [email, otp, now]
       );
     } catch (error) {
       throw new Error("failed to add otp to db");
