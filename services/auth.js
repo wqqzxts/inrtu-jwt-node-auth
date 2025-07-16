@@ -2,6 +2,7 @@ const db = require("../debug/db");
 const jwt = require("../services/jwt");
 const config = require("../config");
 const isHash = require("../util/is_hash");
+const otpEmail = require("../debug/otp_email");
 
 class AuthService {
   async register(userData) {
@@ -23,9 +24,10 @@ class AuthService {
         [last_name, first_name, patronymic, is_male, email, password]
       );
 
+      await this.sendOtp(email);
+
       return result.rows[0];
     } catch (error) {
-      console.error("Database error:", error); // Add this line
       throw new Error(
         `user creation in the db is failed due to: ${error.message}`
       );
@@ -62,10 +64,6 @@ class AuthService {
     };
   }
 
-  // async logout() {
-  //     // does the db knows anything about logout?
-  // }
-
   async refresh(userId) {
     const user = await db.query(
       `SELECT id, is_active FROM users WHERE id = $1`,
@@ -77,6 +75,77 @@ class AuthService {
     // if (!user.rows[0].is_active) // to do
 
     return jwt.genAccess(userId);
+  }
+
+  async sendOtp(email) {
+    const otp = randomInt(100000, 999999).toString();
+    const now = new Date();
+
+    try {
+      await db.query(
+        `
+        INSERT INTO otp_codes (email, otp_code, created_at)
+        VALUES ($1, $2, $3)
+        `[(email, otp, now)]
+      );
+
+      await otpEmail.sendMail({
+        from: config.smtp.auth.user,
+        to: email,
+        subject: "otp",
+        text: `your verification code is: ${otp}`,
+        html: `<p>your verification code is: <strong>${otp}</strong></p>`,
+      });
+
+      return true;
+    } catch (error) {
+      throw new Error("failed to send otp");
+    }
+  }
+
+  async verifyOtp(email, otp) {
+    try {
+      const result = db.query(
+        `
+        SELECT * FROM otp_codes WHERE email = $1
+        `,
+        [email]
+      );
+
+      if (result.rows.length === 0) throw new Error("otp not found");
+
+      const otpRecord = result.rows[0];
+      const now = new Date();
+      const otpAge = (now - otpRecord.created_at) / 1000 / 60;
+
+      if (otpAge > config.otp.expEmailOtp) throw new Error("otp expired");
+      if (otpRecord.attempts >= 3)
+        throw new Error("too many attempts. request a new otp");
+
+      if (otpRecord.otp_code !== otp) {
+        await db.query(
+          `
+          UPDATE otp_codes SET attempts = attempts + 1 WHERE email = $1
+          `,
+          [email]
+        );
+        throw new Error("invalid otp");      
+      }
+
+      await db.query(
+        `UPDATE users SET is_active = true WHERE email = $1`,
+        [email]
+      );
+
+      await db.query(
+        `DELETE FROM otp_codes WHERE email = $1`,
+        [email]
+      )
+
+      return true;
+    } catch (error) {
+      throw new Error("failed to verify OTP");
+    }
   }
 }
 
