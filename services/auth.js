@@ -113,7 +113,7 @@ class AuthService {
 
   async verifyOtp(email, otp) {
     try {
-      const result = db.query(
+      const result = await db.query(
         `
         SELECT * FROM otp_codes WHERE email = $1
         `,
@@ -130,7 +130,7 @@ class AuthService {
       if (otpRecord.attempts >= 3)
         throw new Error("too many attempts. request a new otp");
 
-      if (otpRecord.otp_code !== otp) {
+      if (otpRecord.otp_code !== otp.toString()) {
         await db.query(
           `
           UPDATE otp_codes SET attempts = attempts + 1 WHERE email = $1
