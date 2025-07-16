@@ -32,12 +32,13 @@ class AuthService {
         await query(`COMMIT`);
 
         return result.rows[0];
-      } catch (otpError) {
+      } catch (otpError) {        
         throw new Error(
           `AUTH_SERVICE_ERROR. insert into otp_codes OR send email otp: ${otpError.message}`
         );
       }
     } catch (error) {
+      console.log(`AUTH_SERVICE_ERROR. insert into users in register(): ${error.message}`)
       await query(`ROLLBACK`);
       throw new Error(
         `AUTH_SERVICE_ERROR. insert into users in register(): ${error.message}`
@@ -55,16 +56,19 @@ class AuthService {
       [email]
     );
 
-    if (user.rows.length === 0) throw new Error("user not found");
+    if (user.rows.length === 0)
+      throw new Error("AUTH_SERVICE_INFO. invalid credentials");
 
     const userData = user.rows[0];
 
     if (!isHash(userData.password))
-      throw new Error("user password must be hashed on the client-side");
+      throw new Error("AUTH_SERVICE_ERROR. password is not hashed");
 
-    if (userData.password !== password) throw new Error("invalid password");
+    if (userData.password !== password)
+      throw new Error("AUTH_SERVICE_INFO. invalid credentials");
 
-    // if (!userData.is_active) // to do
+    if (!userData.is_active)
+      throw new Error("AUTH_SERVICE_INFO. user account is not active");
 
     await db.query(`UPDATE users SET last_login = NOW() WHERE id = $1`, [
       userData.id,
@@ -83,14 +87,16 @@ class AuthService {
       [userId]
     );
 
-    if (user.rows.length === 0) throw new Error("user not found");
+    if (user.rows.length === 0)
+      throw new Error("AUTH_SERVICE_ERROR. user not found");
 
-    // if (!user.rows[0].is_active) // to do
+    if (!user.rows[0].is_active)
+      throw new Error("AUTH_SERVICE_INFO. user account is not active");
 
     return jwt.genAccess(userId);
   }
 
-  async sendOtp(email, query) {
+  async sendOtp(email, query = db.query) {
     const otp = randomInt(100000, 999999).toString();
     const now = new Date();
 
@@ -113,6 +119,7 @@ class AuthService {
         html: `<p>your verification code is: <strong>${otp}</strong></p>`,
       });
     } catch (error) {
+      console.log(error);
       throw new Error();
     }
 
@@ -128,15 +135,20 @@ class AuthService {
         [email]
       );
 
-      if (result.rows.length === 0) throw new Error("otp not found");
+      if (result.rows.length === 0)
+        throw new Error("AUTH_SERVICE_ERROR. otp not found");
 
       const otpRecord = result.rows[0];
       const now = new Date();
       const otpAge = (now - otpRecord.created_at) / 1000 / 60;
 
-      if (otpAge > config.otp.expEmailOtp) throw new Error("otp expired");
+      if (otpAge > config.otp.expEmailOtp)
+        throw new Error("AUTH_SERVICE_INFO. otp expired");
+
       if (otpRecord.attempts >= 3)
-        throw new Error("too many attempts. request a new otp");
+        throw new Error(
+          "AUTH_SERVICE_INFO. too many attempts, request a new otp"
+        );
 
       if (otpRecord.otp_code !== otp.toString()) {
         await db.query(
@@ -145,7 +157,7 @@ class AuthService {
           `,
           [email]
         );
-        throw new Error("invalid otp");
+        throw new Error("AUTH_SERVICE_INFO. invalid credentials");
       }
 
       await db.query(`UPDATE users SET is_active = true WHERE email = $1`, [
@@ -156,21 +168,31 @@ class AuthService {
 
       return true;
     } catch (error) {
-      throw new Error("failed to verify OTP");
+      console.log(`AUTH_SERVICE_ERROR: failed to verify OTP: ${error.message}`);
+      throw new Error(
+        `AUTH_SERVICE_ERROR: failed to verify OTP: ${error.message}`
+      );
     }
   }
 
   async resendOtp(email) {
     try {
       const user = await db.query(`SELECT id FROM users WHERE email = $1`, [
-        email,
+        email
       ]);
 
-      if (user.rows.length === 0) throw new Error("user not found");
+      const userRequested = await db.query(
+        `SELECT * FROM otp_codes WHERE email = $1`,
+        [email]
+      );
+
+      if (user.rows.length === 0) throw new Error("AUTH_SERVICE_INFO. user not found");
+      if (userRequested.rows.length === 0) throw new Error("AUTH_SERVICE_INFO. user did not request otp")
 
       return await this.sendOtp(email);
     } catch (error) {
-      throw new Error("failed to resend OTP");
+      console.log(`AUTH_SERVICE_ERROR. failed to resend OTP: ${error.message}`)
+      throw new Error(`AUTH_SERVICE_ERROR. failed to resend OTP: ${error.message}`);
     }
   }
 }

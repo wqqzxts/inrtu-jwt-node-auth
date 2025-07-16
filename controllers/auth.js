@@ -56,8 +56,7 @@ class AuthController {
         access: access,
       });
     } catch (error) {
-      console.log("refresh error: ", error);
-      return res.status(401).json({ msg: "invalid or expired refresh token" });
+      next(error);
     }
   }
 
@@ -71,8 +70,7 @@ class AuthController {
 
       res.json({ msg: "logged out successfully" });
     } catch (error) {
-      console.log("logout error: ", error);
-      return res.status(501).json({ msg: "server error" });
+      next(error);
     }
   }
 
@@ -85,8 +83,7 @@ class AuthController {
         msg: "email verified successfully",
       });
     } catch (error) {
-      console.log("email verify error: ", error);
-      return res.status(400).json({ msg: error.message });
+      next(error);
     }
   }
 
@@ -99,8 +96,7 @@ class AuthController {
         msg: "new verification code sent to your email",
       });
     } catch (error) {
-      console.log("resend otp error: ", error);
-      return res.status(400).json({ msg: error.message });
+      next(error);
     }
   }
 }
