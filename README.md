@@ -22,3 +22,17 @@
 | is_active     | BOOLEAN                        | DEFAULT FALSE  | Активность аккаунта          |
 | created_at    | TIMESTAMPTZ                    | DEFAULT NOW()  | Дата создания                |
 | last_login    | TIMESTAMPTZ                    | NULL           | Дата последнего входа        |
+
+## Использование
+Для начала необходимо настроить .env файл в соответствии с config.js в корневой директории.
+Далее установить зависимости, используя команду:
+```javascript
+npm init
+```
+
+Затем запустить index.js, используя команду:
+
+```javascript
+node index.js
+```
+

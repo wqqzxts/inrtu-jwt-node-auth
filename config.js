@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 module.exports = {
   jwt: {
     secret: process.env.JWT_SECRET || "debug",
@@ -11,5 +13,5 @@ module.exports = {
   },
   client: {
     passwdHashed: true,
-  },
+  },  
 };
