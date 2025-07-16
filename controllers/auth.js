@@ -17,7 +17,7 @@ class AuthController {
         },
       });
     } catch (error) {
-      console.log("register error: ", error);
+      next(error);
     }
   }
 
@@ -26,19 +26,18 @@ class AuthController {
       const { email, password } = req.body;
       const tokens = await authService.login(email, password);
 
-      res.cookie("refresh", tokens.refresh, {
+      res.status(200).cookie("refresh", tokens.refresh, {
         httpOnly: config.refresh_cookie.httpOnly,
         secure: config.refresh_cookie.secure,
         sameSite: config.refresh_cookie.sameSite,
         maxAge: config.jwt.expRefresh,
       });
 
-      res.json({
+      res.status(200).json({
         access: tokens.access,
       });
-    } catch (error) {
-      console.log("login error: ", error);
-      return res.status(401).json({ msg: "invalid credentials" });
+    } catch (error) {  
+      next(error);
     }
   }
 
@@ -83,7 +82,7 @@ class AuthController {
       await authService.verifyOtp(email, otp);
 
       res.json({
-        msg: "email verified successfully"
+        msg: "email verified successfully",
       });
     } catch (error) {
       console.log("email verify error: ", error);
@@ -97,7 +96,7 @@ class AuthController {
       await authService.resendOtp(email);
 
       res.json({
-        msg: "new verification code sent to your email"
+        msg: "new verification code sent to your email",
       });
     } catch (error) {
       console.log("resend otp error: ", error);

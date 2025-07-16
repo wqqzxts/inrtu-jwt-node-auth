@@ -3,8 +3,8 @@ require("dotenv").config();
 module.exports = {
   jwt: {
     secret: process.env.JWT_SECRET || "debug",
-    expAccess: "15m",
-    expRefresh: 4320000,
+    expAccess: 900000,    // 15min
+    expRefresh: 4320000,  // 3d
   },
   refresh_cookie: {
     httpOnly: true,

@@ -11,11 +11,3 @@ const transporter = nodemailer.createTransport({
 });
 
 module.exports = transporter;
-// const transporter = nodemailer.createTransport({
-//     host: 'smtp.ethereal.email',
-//     port: 587,
-//     auth: {
-//         user: 'gilberto.shanahan7@ethereal.email',
-//         pass: 'A3ccNGk7pU574g9FUC'
-//     }
-// });

@@ -10,12 +10,14 @@ class AuthService {
     const { last_name, first_name, patronymic, is_male, email, password } =
       userData;
 
-    if (config.client.passwdHashed && !isHash(password)) {
-      throw new Error("user password must be hashed on the client-side");
-    }
+    if (config.client.passwdHashed && !isHash(password))
+      throw new Error("AUTH_SERVICE_ERROR. password is not hashed");
 
+    const { client, query, release } = await db.getClient();
     try {
-      const result = await db.query(
+      await query(`BEGIN`);
+
+      const result = await query(
         `
         INSERT INTO users
         (last_name, first_name, patronymic, is_male, email, password) 
@@ -25,21 +27,31 @@ class AuthService {
         [last_name, first_name, patronymic, is_male, email, password]
       );
 
-      await this.sendOtp(email);
+      try {
+        await this.sendOtp(email, query);
+        await query(`COMMIT`);
 
-      return result.rows[0];
+        return result.rows[0];
+      } catch (otpError) {
+        throw new Error(
+          `AUTH_SERVICE_ERROR. insert into otp_codes OR send email otp: ${otpError.message}`
+        );
+      }
     } catch (error) {
+      await query(`ROLLBACK`);
       throw new Error(
-        `user creation in the db is failed due to: ${error.message}`
+        `AUTH_SERVICE_ERROR. insert into users in register(): ${error.message}`
       );
+    } finally {
+      release();
     }
   }
 
   async login(email, password) {
     const user = await db.query(
       `
-            SELECT id, password, is_active FROM users WHERE email = $1
-            `,
+      SELECT id, password, is_active FROM users WHERE email = $1
+      `,
       [email]
     );
 
@@ -78,12 +90,12 @@ class AuthService {
     return jwt.genAccess(userId);
   }
 
-  async sendOtp(email) {
+  async sendOtp(email, query) {
     const otp = randomInt(100000, 999999).toString();
     const now = new Date();
 
     try {
-      await db.query(
+      await query(
         `
         INSERT INTO otp_codes (email, otp_code, created_at)
         VALUES ($1, $2, $3)
@@ -92,11 +104,7 @@ class AuthService {
         `,
         [email, otp, now]
       );
-    } catch (error) {
-      throw new Error("failed to add otp to db");
-    }
 
-    try {
       await otpEmail.sendMail({
         from: config.smtp.auth.user,
         to: email,
@@ -105,7 +113,7 @@ class AuthService {
         html: `<p>your verification code is: <strong>${otp}</strong></p>`,
       });
     } catch (error) {
-      throw new Error("failed to send otp");
+      throw new Error();
     }
 
     return true;
