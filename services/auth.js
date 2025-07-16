@@ -3,6 +3,7 @@ const jwt = require("../services/jwt");
 const config = require("../config");
 const isHash = require("../util/is_hash");
 const otpEmail = require("../debug/otp_email");
+const { randomInt } = require("crypto");
 
 class AuthService {
   async register(userData) {
@@ -86,9 +87,15 @@ class AuthService {
         `
         INSERT INTO otp_codes (email, otp_code, created_at)
         VALUES ($1, $2, $3)
-        `[(email, otp, now)]
+        ON CONFLICT (email)
+        DO UPDATE SET otp_code = $2, created_at = $3, attempts = 0
+        `[email, otp, now]
       );
+    } catch (error) {
+      throw new Error("failed to add otp to db");
+    }
 
+    try {
       await otpEmail.sendMail({
         from: config.smtp.auth.user,
         to: email,
@@ -96,11 +103,11 @@ class AuthService {
         text: `your verification code is: ${otp}`,
         html: `<p>your verification code is: <strong>${otp}</strong></p>`,
       });
-
-      return true;
     } catch (error) {
       throw new Error("failed to send otp");
     }
+
+    return true;
   }
 
   async verifyOtp(email, otp) {
@@ -129,22 +136,32 @@ class AuthService {
           `,
           [email]
         );
-        throw new Error("invalid otp");      
+        throw new Error("invalid otp");
       }
 
-      await db.query(
-        `UPDATE users SET is_active = true WHERE email = $1`,
-        [email]
-      );
+      await db.query(`UPDATE users SET is_active = true WHERE email = $1`, [
+        email,
+      ]);
 
-      await db.query(
-        `DELETE FROM otp_codes WHERE email = $1`,
-        [email]
-      )
+      await db.query(`DELETE FROM otp_codes WHERE email = $1`, [email]);
 
       return true;
     } catch (error) {
       throw new Error("failed to verify OTP");
+    }
+  }
+
+  async resendOtp(email) {
+    try {
+      const user = await db.query(`SELECT id FROM users WHERE email = $1`, [
+        email,
+      ]);
+
+      if (user.rows.length === 0) throw new Error("user not found");
+
+      return await this.sendOtp(email);
+    } catch (error) {
+      throw new Error("failed to resend OTP");
     }
   }
 }

@@ -8,7 +8,7 @@ class AuthController {
       const user = await authService.register(req.body);
 
       res.status(200).json({
-        msg: "user registered",
+        msg: "finish the registration: check your email for verification code",
         user: {
           id: user.id,
           email: user.email,
@@ -72,8 +72,36 @@ class AuthController {
 
       res.json({ msg: "logged out successfully" });
     } catch (error) {
-        console.log("logout error: ", error);
-        return res.status(501).json({ msg: "server error" });
+      console.log("logout error: ", error);
+      return res.status(501).json({ msg: "server error" });
+    }
+  }
+
+  async verifyEmail(req, res, next) {
+    try {
+      const { email, otp } = req.body;
+      await authService.verifyOtp(email, otp);
+
+      res.json({
+        msg: "email verified successfully"
+      });
+    } catch (error) {
+      console.log("email verify error: ", error);
+      return res.status(400).json({ msg: error.message });
+    }
+  }
+
+  async resendOtp(req, res, next) {
+    try {
+      const { email } = req.body;
+      await authService.resendOtp(email);
+
+      res.json({
+        msg: "new verification code sent to your email"
+      });
+    } catch (error) {
+      console.log("resend otp error: ", error);
+      return res.status(400).json({ msg: error.message });
     }
   }
 }
