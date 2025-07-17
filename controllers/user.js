@@ -3,10 +3,10 @@ const userService = require('../services/user');
 class UserController {
   async updatePassword(req, res, next) {
     try {
-      const { currentPassword, newPassword } = req.body;
+      const { current_password, new_password } = req.body;
       const userId = req.userId;
 
-      await userService.updatePassword(userId, currentPassword, newPassword);
+      await userService.updatePassword(userId, current_password, new_password);
 
       res.status(201).json({
         msg: "Password updated successfully"

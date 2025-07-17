@@ -7,7 +7,7 @@ const { randomInt } = require("crypto");
 const {
   BadRequestError,
   UnauthorizedError,
-  ForbiddenError,  
+  ForbiddenError,
   InternalServerError,
 } = require("../util/errors");
 
@@ -16,7 +16,7 @@ class AuthService {
     const { last_name, first_name, patronymic, is_male, email, password } =
       userData;
 
-    if (config.client.passwdHashed && !isHash(password))
+    if (config.client.passwdHashed && !isHash(password.toString()))
       throw new BadRequestError("Password is not hashed");
 
     const { client, query, release } = await db.getClient();
@@ -34,7 +34,13 @@ class AuthService {
       );
 
       try {
-        await this.sendOtp(email, query);
+        await this.sendOtp(
+          email,
+          "Регистрация на платформе Карьерный Навигатор",
+          `Пожалуйста, подтвердите ваш email-адрес с помощью этого кода: ${otp}`,
+          `<p>Пожалуйста подтвердите ваше действие с помощью этого кода: <strong>${otp}</strong></p>`,
+          query
+        );
         await query(`COMMIT`);
 
         return result.rows[0];
@@ -66,7 +72,7 @@ class AuthService {
 
     const userData = user.rows[0];
 
-    if (!isHash(userData.password))
+    if (!isHash(userData.password).toString())
       throw new BadRequestError("Password is not hashed");
 
     if (userData.password !== password)
@@ -96,11 +102,17 @@ class AuthService {
 
     if (!user.rows[0].is_active)
       throw new ForbiddenError("User account is not active");
-    
+
     return jwt.genAccess(userId);
   }
 
-  async sendOtp(email, query = db.query) {
+  async sendOtp(
+    email,
+    emailSubject = "Подтверждение действия на платформе Карьерный Навигатор",
+    emailText = `Пожалуйста подтвердите ваше действие с помощью этого кода: ${otp}`,
+    emailHtml = `<p>Пожалуйста подтвердите ваше действие с помощью этого кода: <strong>${otp}</strong></p>`,
+    query = db.query
+  ) {
     const otp = randomInt(100000, 999999).toString();
     const now = new Date();
 
@@ -118,9 +130,9 @@ class AuthService {
       await otpEmail.sendMail({
         from: config.smtp.auth.user,
         to: email,
-        subject: "Регистрация на платформе Карьерный Навигатор",
-        text: `Пожалуйста, подтвердите ваш email-адрес с помощью этого кода: ${otp}`,
-        html: `<p>Пожалуйста, подтвердите ваш email-адрес с помощью этого кода: <strong>${otp}</strong></p>`,
+        subject: emailSubject,
+        text: emailText.replace("${otp}", otp),
+        html: emailHtml.replace("${otp}", otp),
       });
 
       return true;
@@ -129,7 +141,7 @@ class AuthService {
     }
   }
 
-  async verifyOtp(email, otp) {
+  async verifyEmail(email, otp) {
     try {
       const result = await db.query(
         `
@@ -168,8 +180,6 @@ class AuthService {
       ]);
 
       await db.query(`DELETE FROM otp_codes WHERE email = $1`, [email]);
-
-      return true;
     } catch (error) {
       throw new InternalServerError(`Failed to verify OTP: ${error.message}`);
     }
@@ -195,6 +205,107 @@ class AuthService {
       throw new InternalServerError(
         `Failed to resend verification code: ${error.message}`
       );
+    }
+  }
+
+  async requestPasswdReset(email) {
+    const result = await db.query(`SELECT id FROM users WHERE email = $1`, [
+      email,
+    ]);
+
+    if (result.rows.length === 0) return;
+
+    try {
+      await this.sendOtp(
+        email,
+        "Сброс пароля на платформе Карьерный Навигатор",
+        `Пожалуйста, подтвердите сброс вашего пароля с помощью этого кода: ${otp}`,
+        `<p>Пожалуйста подтвердите сброс вашего пароля с помощью этого кода: <strong>${otp}</strong></p>`
+      );
+    } catch (error) {
+      throw new InternalServerError(
+        `Failed to insert otp to db OR to send email otp: ${error.message}`
+      );
+    }
+  }
+
+  async resetPassword(email, otp, newPassword) {
+    if (config.client.passwdHashed && !isHash(newPassword.toString()))
+      throw new BadRequestError("Password is not hashed");
+
+    const { client, query, release } = await db.getClient();
+
+    try {
+      await query(`BEGIN`);
+
+      // dry has left the chat ^-^
+      const otpResult = await query(
+        `
+        SELECT * FROM otp_codes WHERE email = $1
+        `,
+        [email]
+      );
+
+      if (otpResult.rows.length === 0)
+        throw new BadRequestError("Verification code not found");
+
+      const otpRecord = otpResult.rows[0];
+      const now = new Date();
+      const otpAge = (now - otpRecord.created_at) / 1000 / 60;
+
+      if (otpAge > config.otp.expPasswdOtp)
+        throw new UnauthorizedError("Verification code expired");
+
+      if (otpRecord.attempts >= 3)
+        throw new ForbiddenError(
+          "Too many attempts. Request a new verification code"
+        );
+
+      if (otpRecord.otp_code !== otp.toString()) {
+        await query(
+          `
+          UPDATE otp_codes SET attempts = attempts + 1 WHERE email = $1
+          `,
+          [email]
+        );
+        throw new UnauthorizedError("Invalid credentials");
+      }
+
+      const userResult = await query(
+        `
+        SELECT id FROM users WHERE email = $1
+        `,
+        [email]
+      );
+
+      if (userResult.rows.length === 0)
+        throw new BadRequestError("User not found");
+
+      const user = userResult.rows[0];
+
+      if (user.password.toString() === newPassword.toString())
+        throw new BadRequestError("New password is the same as current");
+
+      await query(
+        `
+        UPDATE users SET password = $1 WHERE id = $2
+        `,
+        [newPassword, user.id]
+      );
+
+      await query(
+        `
+        DELETE FROM otp_codes WHERE email = $1
+        `,
+        [email]
+      );
+
+      await query(`COMMIT`);
+    } catch (error) {
+      await query(`ROLLBACK`);
+      throw new InternalServerError(`Failed to reset password: ${error.message}`);
+    } finally {
+      release();
     }
   }
 }

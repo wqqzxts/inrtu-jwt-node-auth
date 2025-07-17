@@ -36,7 +36,7 @@ class AuthController {
       res.status(200).json({
         access: tokens.access,
       });
-    } catch (error) {  
+    } catch (error) {
       next(error);
     }
   }
@@ -68,7 +68,7 @@ class AuthController {
         sameSite: config.refresh_cookie.sameSite,
       });
 
-      res.json({ msg: "logged out successfully" });
+      res.json({ msg: "Logged out successfully" });
     } catch (error) {
       next(error);
     }
@@ -77,10 +77,10 @@ class AuthController {
   async verifyEmail(req, res, next) {
     try {
       const { email, otp } = req.body;
-      await authService.verifyOtp(email, otp);
+      await authService.verifyEmail(email, otp);
 
       res.json({
-        msg: "email verified successfully",
+        msg: "Email verified successfully",
       });
     } catch (error) {
       next(error);
@@ -93,7 +93,33 @@ class AuthController {
       await authService.resendOtp(email);
 
       res.json({
-        msg: "new verification code sent to your email",
+        msg: "New verification code sent to your email",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async requestPasswdReset(req, res, next) {
+    try {
+      const { email } = req.body;
+      await authService.requestPasswdReset(email);
+
+      res.status(201).json({
+        msg: "If an account with provided email exists, a verification code has been sent"
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async resetPassword(req, res, next) {
+    try {
+      const { email, otp, new_password } = req.body;
+      await authService.resetPassword(email, otp, new_password);
+
+      res.status(201).json({
+        msg: "Password reset successfully"
       });
     } catch (error) {
       next(error);
