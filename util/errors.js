@@ -31,10 +31,17 @@ class NotFoundError extends CustomError {
     }
 }
 
+class InternalServerError extends CustomError {
+    constructor(message) {
+        super(message, 500)
+    }
+}
+
 module.exports = {
     CustomError,
     BadRequestError,
     UnauthorizedError,
     ForbiddenError,
     NotFoundError,
+    InternalServerError,
 };

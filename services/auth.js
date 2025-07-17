@@ -4,6 +4,13 @@ const config = require("../config");
 const isHash = require("../util/is_hash");
 const otpEmail = require("../debug/otp_email");
 const { randomInt } = require("crypto");
+const {
+  BadRequestError,
+  UnauthorizedError,
+  ForbiddenError,
+  NotFoundError,
+  InternalServerError,
+} = require("../util/errors");
 
 class AuthService {
   async register(userData) {
@@ -11,7 +18,7 @@ class AuthService {
       userData;
 
     if (config.client.passwdHashed && !isHash(password))
-      throw new Error("AUTH_SERVICE_ERROR. password is not hashed");
+      throw new BadRequestError("Password is not hashed");
 
     const { client, query, release } = await db.getClient();
     try {
@@ -32,16 +39,15 @@ class AuthService {
         await query(`COMMIT`);
 
         return result.rows[0];
-      } catch (otpError) {        
-        throw new Error(
-          `AUTH_SERVICE_ERROR. insert into otp_codes OR send email otp: ${otpError.message}`
+      } catch (otpErr) {
+        throw new InternalServerError(
+          `Failed to insert otp to db OR to send email otp: ${otpErr.message}`
         );
       }
     } catch (error) {
-      console.log(`AUTH_SERVICE_ERROR. insert into users in register(): ${error.message}`)
       await query(`ROLLBACK`);
-      throw new Error(
-        `AUTH_SERVICE_ERROR. insert into users in register(): ${error.message}`
+      throw new InternalServerError(
+        `Failed to insert user to db: ${error.message}`
       );
     } finally {
       release();
@@ -57,18 +63,18 @@ class AuthService {
     );
 
     if (user.rows.length === 0)
-      throw new Error("AUTH_SERVICE_INFO. invalid credentials");
+      throw new UnauthorizedError("Invalid credentials");
 
     const userData = user.rows[0];
 
     if (!isHash(userData.password))
-      throw new Error("AUTH_SERVICE_ERROR. password is not hashed");
+      throw new BadRequestError("Password is not hashed");
 
     if (userData.password !== password)
-      throw new Error("AUTH_SERVICE_INFO. invalid credentials");
+      throw new UnauthorizedError("Invalid credentials");
 
     if (!userData.is_active)
-      throw new Error("AUTH_SERVICE_INFO. user account is not active");
+      throw new ForbiddenError("User account is not active");
 
     await db.query(`UPDATE users SET last_login = NOW() WHERE id = $1`, [
       userData.id,
@@ -87,12 +93,12 @@ class AuthService {
       [userId]
     );
 
-    if (user.rows.length === 0)
-      throw new Error("AUTH_SERVICE_ERROR. user not found");
+    if (user.rows.length === 0) throw new BadRequestError("User not found");
 
     if (!user.rows[0].is_active)
-      throw new Error("AUTH_SERVICE_INFO. user account is not active");
+      throw new ForbiddenError("User account is not active");
 
+    // i guess we first need to verify refresh jwt
     return jwt.genAccess(userId);
   }
 
@@ -118,12 +124,11 @@ class AuthService {
         text: `Пожалуйста, подтвердите ваш email-адрес с помощью этого кода: ${otp}`,
         html: `<p>Пожалуйста, подтвердите ваш email-адрес с помощью этого кода: <strong>${otp}</strong></p>`,
       });
-    } catch (error) {
-      console.log(error);
-      throw new Error();
-    }
 
-    return true;
+      return true;
+    } catch (error) {
+      throw error;
+    }
   }
 
   async verifyOtp(email, otp) {
@@ -136,18 +141,18 @@ class AuthService {
       );
 
       if (result.rows.length === 0)
-        throw new Error("AUTH_SERVICE_ERROR. otp not found");
+        throw new BadRequestError("Verification code not found");
 
       const otpRecord = result.rows[0];
       const now = new Date();
       const otpAge = (now - otpRecord.created_at) / 1000 / 60;
 
       if (otpAge > config.otp.expEmailOtp)
-        throw new Error("AUTH_SERVICE_INFO. otp expired");
+        throw new UnauthorizedError("Verification code expired");
 
       if (otpRecord.attempts >= 3)
-        throw new Error(
-          "AUTH_SERVICE_INFO. too many attempts, request a new otp"
+        throw new ForbiddenError(
+          "Too many attempts. Request a new verification code"
         );
 
       if (otpRecord.otp_code !== otp.toString()) {
@@ -157,7 +162,7 @@ class AuthService {
           `,
           [email]
         );
-        throw new Error("AUTH_SERVICE_INFO. invalid credentials");
+        throw new UnauthorizedError("Invalid credentials");
       }
 
       await db.query(`UPDATE users SET is_active = true WHERE email = $1`, [
@@ -168,17 +173,14 @@ class AuthService {
 
       return true;
     } catch (error) {
-      console.log(`AUTH_SERVICE_ERROR: failed to verify OTP: ${error.message}`);
-      throw new Error(
-        `AUTH_SERVICE_ERROR: failed to verify OTP: ${error.message}`
-      );
+      throw new InternalServerError(`Failed to verify OTP: ${error.message}`);
     }
   }
 
   async resendOtp(email) {
     try {
       const user = await db.query(`SELECT id FROM users WHERE email = $1`, [
-        email
+        email,
       ]);
 
       const userRequested = await db.query(
@@ -186,13 +188,15 @@ class AuthService {
         [email]
       );
 
-      if (user.rows.length === 0) throw new Error("AUTH_SERVICE_INFO. user not found");
-      if (userRequested.rows.length === 0) throw new Error("AUTH_SERVICE_INFO. user did not request otp")
+      if (user.rows.length === 0) throw new BadRequestError("User not found");
+      if (userRequested.rows.length === 0)
+        throw new ForbiddenError("User did not request verification code");
 
       return await this.sendOtp(email);
     } catch (error) {
-      console.log(`AUTH_SERVICE_ERROR. failed to resend OTP: ${error.message}`)
-      throw new Error(`AUTH_SERVICE_ERROR. failed to resend OTP: ${error.message}`);
+      throw new InternalServerError(
+        `Failed to resend verification code: ${error.message}`
+      );
     }
   }
 }
