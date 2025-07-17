@@ -97,8 +97,7 @@ class AuthService {
 
     if (!user.rows[0].is_active)
       throw new ForbiddenError("User account is not active");
-
-    // i guess we first need to verify refresh jwt
+    
     return jwt.genAccess(userId);
   }
 

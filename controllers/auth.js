@@ -8,7 +8,7 @@ class AuthController {
       const user = await authService.register(req.body);
 
       res.status(200).json({
-        msg: "finish the registration: check your email for verification code",
+        msg: "Check your email for verification code",
         user: {
           id: user.id,
           email: user.email,
@@ -45,7 +45,7 @@ class AuthController {
     try {
       const refresh = req.cookies.refresh;
       if (!refresh) {
-        return res.status(401).json({ msg: "refresh token missing" });
+        return res.status(401).json({ msg: "Refresh token missing" });
       }
 
       const decoded = jwt.verifyRefresh(refresh);
