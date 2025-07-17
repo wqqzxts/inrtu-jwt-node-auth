@@ -1,5 +1,9 @@
 const jwt = require("jsonwebtoken");
 const config = require("../config");
+const {    
+  UnauthorizedError,
+  ForbiddenError,
+} = require("../util/errors");
 
 class JwtService {
   genAccess(userId) {
@@ -9,7 +13,11 @@ class JwtService {
   }
 
   verifyAccess(token) {
-    return jwt.verify(token, config.jwt.secret);
+    try {
+     return jwt.verify(token, config.jwt.secret); 
+    } catch (error) {
+      throw new UnauthorizedError('Invalid or expired access token')
+    }    
   }
 
   genRefresh(userId) {
@@ -19,7 +27,11 @@ class JwtService {
   }
 
   verifyRefresh(token) {
-    return jwt.verify(token, config.jwt.secret);
+    try {
+      return jwt.verify(token, config.jwt.secret);
+    } catch (error) {
+      throw new ForbiddenError('Invalid or expired refresh token');
+    }    
   }
 }
 

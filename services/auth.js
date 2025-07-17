@@ -7,8 +7,7 @@ const { randomInt } = require("crypto");
 const {
   BadRequestError,
   UnauthorizedError,
-  ForbiddenError,
-  NotFoundError,
+  ForbiddenError,  
   InternalServerError,
 } = require("../util/errors");
 
