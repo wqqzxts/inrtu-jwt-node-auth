@@ -273,7 +273,7 @@ class AuthService {
 
       const userResult = await query(
         `
-        SELECT id FROM users WHERE email = $1
+        SELECT id, password FROM users WHERE email = $1
         `,
         [email]
       );
@@ -283,7 +283,7 @@ class AuthService {
 
       const user = userResult.rows[0];
 
-      if (user.password.toString() === newPassword.toString())
+      if (user.password === newPassword.toString())
         throw new BadRequestError("New password is the same as current");
 
       await query(
