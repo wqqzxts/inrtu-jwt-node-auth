@@ -114,9 +114,9 @@ class AuthService {
       await otpEmail.sendMail({
         from: config.smtp.auth.user,
         to: email,
-        subject: "otp",
-        text: `your verification code is: ${otp}`,
-        html: `<p>your verification code is: <strong>${otp}</strong></p>`,
+        subject: "Регистрация на платформе Карьерный Навигатор",
+        text: `Пожалуйста, подтвердите ваш email-адрес с помощью этого кода: ${otp}`,
+        html: `<p>Пожалуйста, подтвердите ваш email-адрес с помощью этого кода: <strong>${otp}</strong></p>`,
       });
     } catch (error) {
       console.log(error);
