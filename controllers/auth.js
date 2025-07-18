@@ -45,7 +45,7 @@ class AuthController {
     try {
       const refresh = req.cookies.refresh;
       if (!refresh) {
-        return res.status(401).json({ msg: "Refresh token missing" });
+        return res.status(403).json({ msg: "Refresh token missing" });
       }
 
       const decoded = jwt.verifyRefresh(refresh);

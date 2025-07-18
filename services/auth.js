@@ -21,38 +21,45 @@ class AuthService {
 
     const { client, query, release } = await db.getClient();
     try {
-      await query(`BEGIN`);
+      let result;
+      try {
+        await query(`BEGIN`);
 
-      const result = await query(
-        `
+        result = await query(
+          `
         INSERT INTO users
         (last_name, first_name, patronymic, is_male, email, password) 
         VALUES ($1, $2, $3, $4, $5, $6) 
         RETURNING id, email, is_active, created_at
         `,
-        [last_name, first_name, patronymic, is_male, email, password]
-      );
+          [last_name, first_name, patronymic, is_male, email, password]
+        );
+      } catch (error) {
+        throw new InternalServerError(
+          `Failed to insert user into DB: ${error.message}`
+        );
+      }
 
       try {
         await this.sendOtp(
           email,
           "Регистрация на платформе Карьерный Навигатор",
           "Пожалуйста, подтвердите ваш email-адрес с помощью этого кода: ${otp}",
-          "<p>Пожалуйста подтвердите ваше действие с помощью этого кода: <strong>${otp}</strong></p>",
+          "<p>Пожалуйста подтвердите ваш email-адрес с помощью этого кода: <strong>${otp}</strong></p>",
           query
         );
         await query(`COMMIT`);
 
         return result.rows[0];
-      } catch (otpErr) {
+      } catch (error) {
         throw new InternalServerError(
-          `Failed to insert otp to db OR to send email otp: ${otpErr.message}`
+          `Failed to send email OTP: ${error.message}`
         );
       }
     } catch (error) {
       await query(`ROLLBACK`);
       throw new InternalServerError(
-        `Failed to insert user to db: ${error.message}`
+        `Failed to register user: ${error.message}`
       );
     } finally {
       release();
@@ -116,91 +123,105 @@ class AuthService {
     const otp = randomInt(100000, 999999).toString();
     const now = new Date();
 
-    try {
-      await query(
-        `
+    await query(
+      `
         INSERT INTO otp_codes (email, otp_code, created_at)
         VALUES ($1, $2, $3)
         ON CONFLICT (email)
         DO UPDATE SET otp_code = $2, created_at = $3, attempts = 0
         `,
-        [email, otp, now]
-      );
+      [email, otp, now]
+    );
 
-      await otpEmail.sendMail({
-        from: config.smtp.auth.user,
-        to: email,
-        subject: emailSubject,
-        text: emailText.replace("${otp}", otp),
-        html: emailHtml.replace("${otp}", otp),
-      });
-
-      return true;
-    } catch (error) {
-      throw error;
-    }
+    await otpEmail.sendMail({
+      from: config.smtp.auth.user,
+      to: email,
+      subject: emailSubject,
+      text: emailText.replace("${otp}", otp),
+      html: emailHtml.replace("${otp}", otp),
+    });
   }
 
   async verifyEmail(email, otp) {
-    try {
-      const result = await db.query(
-        `
+    const result = await db.query(
+      `
         SELECT * FROM otp_codes WHERE email = $1
         `,
-        [email]
+      [email]
+    );
+
+    if (result.rows.length === 0)
+      throw new BadRequestError("Verification code not found");
+
+    const otpRecord = result.rows[0];
+    const now = new Date();
+    const otpAge = (now - otpRecord.created_at) / 1000 / 60;
+
+    if (otpAge > config.otp.expEmailOtp)
+      throw new UnauthorizedError("Verification code expired");
+
+    if (otpRecord.attempts >= 3)
+      throw new ForbiddenError(
+        "Too many attempts. Request a new verification code"
       );
 
-      if (result.rows.length === 0)
-        throw new BadRequestError("Verification code not found");
+    if (otpRecord.otp_code !== otp.toString()) {
+      try {
+        await db.query(`BEGIN`);
 
-      const otpRecord = result.rows[0];
-      const now = new Date();
-      const otpAge = (now - otpRecord.created_at) / 1000 / 60;
-
-      if (otpAge > config.otp.expEmailOtp)
-        throw new UnauthorizedError("Verification code expired");
-
-      if (otpRecord.attempts >= 3)
-        throw new ForbiddenError(
-          "Too many attempts. Request a new verification code"
-        );
-
-      if (otpRecord.otp_code !== otp.toString()) {
         await db.query(
           `
           UPDATE otp_codes SET attempts = attempts + 1 WHERE email = $1
           `,
           [email]
         );
-        throw new UnauthorizedError("Invalid credentials");
+
+        await db.query(`COMMIT`);
+      } catch (error) {
+        await db.query(`ROLLBACK`);
+        throw new InternalServerError("Failed to record verification attempt");
       }
+      throw new UnauthorizedError("Invalid credentials");
+    }
+
+    try {
+      await db.query(`BEGIN`);
 
       await db.query(`UPDATE users SET is_active = true WHERE email = $1`, [
         email,
       ]);
 
       await db.query(`DELETE FROM otp_codes WHERE email = $1`, [email]);
+
+      await db.query(`COMMIT`);
     } catch (error) {
-      throw new InternalServerError(`Failed to verify OTP: ${error.message}`);
+      await db.query(`ROLLBACK`);
+      throw new InternalServerError(`Failed to verify email: ${error.message}`);
     }
   }
 
   async resendOtp(email) {
+    const user = await db.query(`SELECT id FROM users WHERE email = $1`, [
+      email,
+    ]);
+
+    const userRequested = await db.query(
+      `SELECT * FROM otp_codes WHERE email = $1`,
+      [email]
+    );
+
+    if (user.rows.length === 0) throw new BadRequestError("User not found");
+
+    if (userRequested.rows.length === 0)
+      throw new ForbiddenError("User did not request verification code");
+
     try {
-      const user = await db.query(`SELECT id FROM users WHERE email = $1`, [
+      await this.sendOtp(
         email,
-      ]);
-
-      const userRequested = await db.query(
-        `SELECT * FROM otp_codes WHERE email = $1`,
-        [email]
+        "Регистрация на платформе Карьерный Навигатор",
+        "Пожалуйста, подтвердите ваш email-адрес с помощью этого кода: ${otp}",
+        "<p>Пожалуйста подтвердите ваш email-адрес с помощью этого кода: <strong>${otp}</strong></p>"
       );
-
-      if (user.rows.length === 0) throw new BadRequestError("User not found");
-      if (userRequested.rows.length === 0)
-        throw new ForbiddenError("User did not request verification code");
-
-      return await this.sendOtp(email);
     } catch (error) {
       throw new InternalServerError(
         `Failed to resend verification code: ${error.message}`
@@ -224,7 +245,7 @@ class AuthService {
       );
     } catch (error) {
       throw new InternalServerError(
-        `Failed to insert otp to db OR to send email otp: ${error.message}`
+        `Failed to send email OTP: ${error.message}`
       );
     }
   }
@@ -233,79 +254,85 @@ class AuthService {
     if (config.client.passwdHashed && !isHash(newPassword.toString()))
       throw new BadRequestError("Password is not hashed");
 
-    const { client, query, release } = await db.getClient();
-
-    try {
-      await query(`BEGIN`);
-
-      // dry has left the chat ^-^
-      const otpResult = await query(
-        `
+    const otpResult = await db.query(
+      `
         SELECT * FROM otp_codes WHERE email = $1
         `,
-        [email]
+      [email]
+    );
+
+    if (otpResult.rows.length === 0)
+      throw new BadRequestError("Verification code not found");
+
+    const otpRecord = otpResult.rows[0];
+    const now = new Date();
+    const otpAge = (now - otpRecord.created_at) / 1000 / 60;
+
+    if (otpAge > config.otp.expPasswdOtp)
+      throw new UnauthorizedError("Verification code expired");
+
+    if (otpRecord.attempts >= 3)
+      throw new ForbiddenError(
+        "Too many attempts. Request a new verification code"
       );
 
-      if (otpResult.rows.length === 0)
-        throw new BadRequestError("Verification code not found");
+    if (otpRecord.otp_code !== otp.toString()) {
+      try {
+        await db.query(`BEGIN`);
 
-      const otpRecord = otpResult.rows[0];
-      const now = new Date();
-      const otpAge = (now - otpRecord.created_at) / 1000 / 60;
-
-      if (otpAge > config.otp.expPasswdOtp)
-        throw new UnauthorizedError("Verification code expired");
-
-      if (otpRecord.attempts >= 3)
-        throw new ForbiddenError(
-          "Too many attempts. Request a new verification code"
-        );
-
-      if (otpRecord.otp_code !== otp.toString()) {
-        await query(
+        await db.query(
           `
           UPDATE otp_codes SET attempts = attempts + 1 WHERE email = $1
           `,
           [email]
         );
-        throw new UnauthorizedError("Invalid credentials");
-      }
 
-      const userResult = await query(
-        `
+        await db.query(`COMMIT`);
+      } catch (error) {
+        await db.query(`ROLLBACK`);
+        throw new InternalServerError("Failed to record verification attempt");
+      }
+      throw new UnauthorizedError("Invalid credentials");
+    }
+
+    const userResult = await db.query(
+      `
         SELECT id, password FROM users WHERE email = $1
         `,
-        [email]
-      );
+      [email]
+    );
 
-      if (userResult.rows.length === 0)
-        throw new BadRequestError("User not found");
+    if (userResult.rows.length === 0)
+      throw new BadRequestError("User not found");
 
-      const user = userResult.rows[0];
+    const user = userResult.rows[0];
 
-      if (user.password === newPassword.toString())
-        throw new BadRequestError("New password is the same as current");
+    if (user.password === newPassword.toString())
+      throw new BadRequestError("New password is the same as current");
 
-      await query(
+    try {
+      await db.query(`BEGIN`);
+
+      await db.query(
         `
         UPDATE users SET password = $1 WHERE id = $2
         `,
         [newPassword, user.id]
       );
 
-      await query(
+      await db.query(
         `
         DELETE FROM otp_codes WHERE email = $1
         `,
         [email]
       );
 
-      await query(`COMMIT`);
+      await db.query(`COMMIT`);
     } catch (error) {
-      await query(`ROLLBACK`);
-      throw new InternalServerError(`Failed to reset password: ${error.message}`);
-    } finally {
-      release();
+      await db.query(`ROLLBACK`);
+      throw new InternalServerError(
+        `Failed to reset password: ${error.message}`
+      );
     }
   }
 }

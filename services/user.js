@@ -21,38 +21,34 @@ class UserService {
     if (currentPassword.toString() === newPassword.toString())
       throw new BadRequestError("New password is the same as current");
 
-    const { client, query, release } = await db.getClient();
-    try {
-      await query(`BEGIN`);
-
-      const result = await query(
-        `
+    const result = await db.query(
+      `
             SELECT password FROM users WHERE id = $1
             `,
-        [userId]
-      );
+      [userId]
+    );
 
-      if (result.rows.length === 0)
-        throw new BadRequestError("User not found");
+    if (result.rows.length === 0) throw new BadRequestError("User not found");
 
-      const user = result.rows[0];
+    const user = result.rows[0];
 
-      if (user.password !== currentPassword)
-        throw new UnauthorizedError("Invalid credentials");
+    if (user.password !== currentPassword)
+      throw new UnauthorizedError("Invalid credentials");
 
-      await query(`UPDATE users SET password = $1 WHERE id = $2`, [
+    try {
+      await db.query(`BEGIN`);
+
+      await db.query(`UPDATE users SET password = $1 WHERE id = $2`, [
         newPassword,
         userId,
       ]);
 
-      await query(`COMMIT`);
+      await db.query(`COMMIT`);
     } catch (error) {
-      await query("ROLLBACK");
+      await db.query("ROLLBACK");
       throw new InternalServerError(
         `Failed to update password: ${error.message}`
       );
-    } finally {
-      release();
     }
   }
 }

@@ -5,7 +5,7 @@ function errorHandler(err, req, res, next) {
   if (process.env.ENV_STATE !== "prod") console.error(err.stack);
 
   res.status(statusCode).json({
-    error: message,
+    err: message,
   });
 }
 
