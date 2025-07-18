@@ -143,46 +143,7 @@ class AuthService {
   }
 
   async verifyEmail(email, otp) {
-    const result = await db.query(
-      `
-        SELECT * FROM otp_codes WHERE email = $1
-        `,
-      [email]
-    );
-
-    if (result.rows.length === 0)
-      throw new BadRequestError("Verification code not found");
-
-    const otpRecord = result.rows[0];
-    const now = new Date();
-    const otpAge = (now - otpRecord.created_at) / 1000 / 60;
-
-    if (otpAge > config.otp.expEmailOtp)
-      throw new UnauthorizedError("Verification code expired");
-
-    if (otpRecord.attempts >= 3)
-      throw new ForbiddenError(
-        "Too many attempts. Request a new verification code"
-      );
-
-    if (otpRecord.otp_code !== otp.toString()) {
-      try {
-        await db.query(`BEGIN`);
-
-        await db.query(
-          `
-          UPDATE otp_codes SET attempts = attempts + 1 WHERE email = $1
-          `,
-          [email]
-        );
-
-        await db.query(`COMMIT`);
-      } catch (error) {
-        await db.query(`ROLLBACK`);
-        throw new InternalServerError("Failed to record verification attempt");
-      }
-      throw new UnauthorizedError("Invalid credentials");
-    }
+    await this.verifyOtp(email, otp);
 
     try {
       await db.query(`BEGIN`);
@@ -254,21 +215,64 @@ class AuthService {
     if (config.client.passwdHashed && !isHash(newPassword.toString()))
       throw new BadRequestError("Password is not hashed");
 
-    const otpResult = await db.query(
+    await this.verifyOtp(email, otp);
+
+    const result = await db.query(
+      `
+        SELECT id, password FROM users WHERE email = $1
+        `,
+      [email]
+    );
+
+    if (result.rows.length === 0) throw new BadRequestError("User not found");
+
+    const userRecord = result.rows[0];
+
+    if (userRecord.password === newPassword.toString())
+      throw new BadRequestError("New password is the same as current");
+
+    try {
+      await db.query(`BEGIN`);
+
+      await db.query(
+        `
+        UPDATE users SET password = $1 WHERE id = $2
+        `,
+        [newPassword, userRecord.id]
+      );
+
+      await db.query(
+        `
+        DELETE FROM otp_codes WHERE email = $1
+        `,
+        [email]
+      );
+
+      await db.query(`COMMIT`);
+    } catch (error) {
+      await db.query(`ROLLBACK`);
+      throw new InternalServerError(
+        `Failed to reset password: ${error.message}`
+      );
+    }
+  }
+
+  async verifyOtp(email, otp) {
+    const result = await db.query(
       `
         SELECT * FROM otp_codes WHERE email = $1
         `,
       [email]
     );
 
-    if (otpResult.rows.length === 0)
+    if (result.rows.length === 0)
       throw new BadRequestError("Verification code not found");
 
-    const otpRecord = otpResult.rows[0];
+    const otpRecord = result.rows[0];
     const now = new Date();
     const otpAge = (now - otpRecord.created_at) / 1000 / 60;
 
-    if (otpAge > config.otp.expPasswdOtp)
+    if (otpAge > config.otp.expOtp)
       throw new UnauthorizedError("Verification code expired");
 
     if (otpRecord.attempts >= 3)
@@ -293,46 +297,6 @@ class AuthService {
         throw new InternalServerError("Failed to record verification attempt");
       }
       throw new UnauthorizedError("Invalid credentials");
-    }
-
-    const userResult = await db.query(
-      `
-        SELECT id, password FROM users WHERE email = $1
-        `,
-      [email]
-    );
-
-    if (userResult.rows.length === 0)
-      throw new BadRequestError("User not found");
-
-    const user = userResult.rows[0];
-
-    if (user.password === newPassword.toString())
-      throw new BadRequestError("New password is the same as current");
-
-    try {
-      await db.query(`BEGIN`);
-
-      await db.query(
-        `
-        UPDATE users SET password = $1 WHERE id = $2
-        `,
-        [newPassword, user.id]
-      );
-
-      await db.query(
-        `
-        DELETE FROM otp_codes WHERE email = $1
-        `,
-        [email]
-      );
-
-      await db.query(`COMMIT`);
-    } catch (error) {
-      await db.query(`ROLLBACK`);
-      throw new InternalServerError(
-        `Failed to reset password: ${error.message}`
-      );
     }
   }
 }

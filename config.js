@@ -23,7 +23,6 @@ module.exports = {
     },
   },
   otp: {
-    expEmailOtp: 15, // min
-    expPasswdOtp: 10 // min
+    expOtp: 10,
   }
 };

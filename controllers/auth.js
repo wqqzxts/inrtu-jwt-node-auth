@@ -68,7 +68,7 @@ class AuthController {
         sameSite: config.refresh_cookie.sameSite,
       });
 
-      res.json({ msg: "Logged out successfully" });
+      res.status(201).json({ msg: "Logged out successfully" });
     } catch (error) {
       next(error);
     }
